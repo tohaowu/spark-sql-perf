@@ -44,11 +44,36 @@ case class ExperimentRun(
  *                           Usually, it is the number of cores of the cluster.
  */
 case class BenchmarkConfiguration(
+    sparkVersion: String,
+    sqlConf: Map[String, String],
+    sparkConf: Map[String, String],
+    defaultParallelism: Int,
+    buildInfo: Map[String, String],
+    format: String,
+    dataset: Option[String],
+    path: Option[String]) {
+}
+object BenchmarkConfiguration {
+    val FORMAT_KEY = "spark.sql.p3rf.table.format"
+    val DATASET_KEY = "spark.sql.p3rf.dataset"
+    val PATH_KEY = "spark.sql.p3rf.path"
+  def apply(
     sparkVersion: String = org.apache.spark.SPARK_VERSION,
     sqlConf: Map[String, String],
     sparkConf: Map[String, String],
     defaultParallelism: Int,
-    buildInfo: Map[String, String])
+      buildInfo: Map[String, String]): BenchmarkConfiguration = {
+    BenchmarkConfiguration(
+        sparkVersion,
+        sqlConf,
+        sparkConf,
+        defaultParallelism,
+        buildInfo,
+        format=sqlConf.getOrElse(BenchmarkConfiguration.FORMAT_KEY, "table"),
+        dataset=sqlConf.get(BenchmarkConfiguration.DATASET_KEY),
+        path=sqlConf.get(BenchmarkConfiguration.PATH_KEY))
+  }
+}
 
 /**
  * The result of a query.

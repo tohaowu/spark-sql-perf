@@ -8,33 +8,37 @@ This is a performance testing framework for [Spark SQL](https://spark.apache.org
 
 # Quick Start
 
-## Running from command line.
+## Build jar
 
 ```
-$ bin/run --help
+$sbt assemby
+```
 
-spark-sql-perf 0.2.0
+## running from command line.
+
+```
+$ spark-submit target/scala-2.11/spark-sql-perf-assembly*.jar --help
+
+spark-sql-perf 0.5.1-SNAPSHOT
 Usage: spark-sql-perf [options]
 
-  -b <value> | --benchmark <value>
-        the name of the benchmark to run
-  -m <value> | --master <value
-        the master url to use
-  -f <value> | --filter <value>
-        a filter on the name of the queries to run
-  -i <value> | --iterations <value>
-        the number of iterations to run
-  --help
-        prints this usage text
-        
-$ bin/run --benchmark DatasetPerformance
-```
+  -b, --benchmark <value>  the name of the benchmark to run
+  --format <value>         Format to use to read data (table is a hive table and not a data source)                                           
+  -d, --dataset <value>    dataset to find data in
+  -p, --path <value>       HCFS directory holding data
+  -f, --filter <value>     a filter on the name of the queries to run
+  -i, --iterations <value>
+                           the number of iterations to run
+  -o, --output <value>     HCFS directory containing the output report
+  -c, --compare <value>    the timestamp of the baseline experiment to compare with                                                           
+  --help                   prints this usage text
 
-The first run of `bin/run` will build the library.
+$ spark-submit target/scala-2.11/spark-sql-perf-assembly*.jar --benchmark DatasetPerformance
+```
 
 ## Build
 
-Use `sbt package` or `sbt assembly` to build the library jar.  
+Use `sbt package` or `sbt assembly` to build the library jar.
 Use `sbt +package` to build for scala 2.11 and 2.12.
 
 ## Local performance tests
@@ -64,7 +68,7 @@ the vanilla TPCDS kit.
 
 TPCDS kit needs to be installed on all cluster executor nodes under the same path!
 
-It can be found [here](https://github.com/databricks/tpcds-kit).  
+It can be found [here](https://github.com/databricks/tpcds-kit).
 
 ```
 import com.databricks.spark.sql.perf.tpcds.TPCDSTables
@@ -86,8 +90,8 @@ tables.genData(
     location = rootDir,
     format = format,
     overwrite = true, // overwrite the data that is already there
-    partitionTables = true, // create the partitioned fact tables 
-    clusterByPartitionColumns = true, // shuffle to get partitions coalesced into single files. 
+    partitionTables = true, // create the partitioned fact tables
+    clusterByPartitionColumns = true, // shuffle to get partitions coalesced into single files.
     filterOutNullPartitionValues = false, // true to filter out the partition with NULL key value
     tableFilter = "", // "" means generate all tables
     numPartitions = 100) // how many dsdgen partitions to run - number of input tasks.
@@ -101,34 +105,15 @@ tables.createExternalTables(rootDir, "parquet", databaseName, overwrite = true, 
 // tables.createTemporaryTables(location, format)
 
 // For CBO only, gather statistics on all columns:
-tables.analyzeTables(databaseName, analyzeColumns = true) 
+tables.analyzeTables(databaseName, analyzeColumns = true)
 ```
 
 ## Run benchmarking queries
 After setup, users can use `runExperiment` function to run benchmarking queries and record query execution time. Taking TPC-DS as an example, you can start an experiment by using
 
 ```
-import com.databricks.spark.sql.perf.tpcds.TPCDS
-
-val tpcds = new TPCDS (sqlContext = sqlContext)
-// Set:
-val databaseName = ... // name of database with TPCDS data.
-val resultLocation = ... // place to write results
-val iterations = 1 // how many iterations of queries to run.
-val queries = tpcds.tpcds2_4Queries // queries to run.
-val timeout = 24*60*60 // timeout, in seconds.
-// Run:
-sql(s"use $databaseName")
-val experiment = tpcds.runExperiment(
-  queries, 
-  iterations = iterations,
-  resultLocation = resultLocation,
-  forkThread = true)
-experiment.waitForFinish(timeout)
+$ spark-submit target/scala-2.11/spark-sql-perf-assembly*.jar --benchmark tpcds.TPCDS
 ```
-
-By default, experiment will be started in a background thread.
-For every experiment run (i.e. every call of `runExperiment`), Spark SQL Perf will use the timestamp of the start time to identify this experiment. Performance results will be stored in the sub-dir named by the timestamp in the given `spark.sql.perf.results` (for example `/tmp/results/timestamp=1429213883272`). The performance results are stored in the JSON format.
 
 ## Retrieve results
 While the experiment is running you can use `experiment.html` to get a summary, or `experiment.getCurrentResults` to get complete current results.
@@ -175,7 +160,7 @@ This notebook can be used to install dsdgen on all worker nodes, run data genera
 Note that because of the way dsdgen is installed, it will not work on an autoscaling cluster, and `num_workers` has
 to be updated to the number of worker instances on the cluster.
 Data generation may also break if any of the workers is killed - the restarted worker container will not have `dsdgen` anymore.
- 
+
 ### tpcds_run notebook
 
 This notebook can be used to run TPCDS queries.

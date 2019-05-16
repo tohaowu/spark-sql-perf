@@ -18,7 +18,6 @@ package com.databricks.spark.sql.perf.tpcds
 
 import scala.collection.mutable
 import com.databricks.spark.sql.perf._
-import org.apache.spark.SparkContext
 import org.apache.spark.sql.{SQLContext, SparkSession}
 
 /**
@@ -28,29 +27,37 @@ import org.apache.spark.sql.{SQLContext, SparkSession}
  */
 class TPCDS(@transient sqlContext: SQLContext)
   extends Benchmark(sqlContext)
-  with ImpalaKitQueries
-  with SimpleQueries
-  with Tpcds_1_4_Queries
+    //  with ImpalaKitQueries
+    //  with SimpleQueries
+    //  with Tpcds_1_4_Queries
   with Tpcds_2_4_Queries
   with Serializable {
 
   def this() = this(SparkSession.builder.getOrCreate().sqlContext)
 
-  /*
-  def setupBroadcast(skipTables: Seq[String] = Seq("store_sales", "customer")) = {
-    val skipExpr = skipTables.map(t => !('tableName === t)).reduceLeft[Column](_ && _)
-    val threshold =
-      allStats
-        .where(skipExpr)
-        .select(max('sizeInBytes))
-        .first()
-        .getLong(0)
-    val setQuery = s"SET spark.sql.autoBroadcastJoinThreshold=$threshold"
+  // Used to list tables not to generate data (which depends on scale factor).
+  private lazy final val TABLES: Tables = new TPCDSTables(sqlContext, "/tmp", "1")
 
-    println(setQuery)
-    sql(setQuery)
+  override def setup(): Unit = {
+    val spark = sqlContext.sparkSession
+    val conf: BenchmarkConfiguration = currentConfiguration
+    val format = conf.format.get
+    if (format == "table") {
+      conf.dataset.foreach(spark.catalog.setCurrentDatabase)
+      return
+    }
+    val opts = scala.collection.mutable.Map[String, String]()
+    conf.dataset.foreach(v => opts += "dataset" -> v)
+
+    TABLES.tables.foreach { t =>
+      if (conf.path.isEmpty) {
+        opts += "table" -> t.name
+      } else {
+        opts += "path" -> s"${conf.path.get}/${t.name}"
+      }
+      spark.read.format(format).options(opts).load.createTempView(t.name)
+    }
   }
-  */
 
   /**
    * Simple utilities to run the queries without persisting the results.
@@ -115,6 +122,3 @@ class TPCDS(@transient sqlContext: SQLContext)
     println(succeeded.map("\"" + _ + "\""))
   }
 }
-
-
-

@@ -57,6 +57,16 @@ dbcClusters += sys.env.getOrElse("DBC_USERNAME", "")
 
 dbcLibraryPath := s"/Users/${sys.env.getOrElse("DBC_USERNAME", "")}/lib"
 
+enablePlugins(BuildInfoPlugin)
+
+buildInfoKeys := Seq[BuildInfoKey](name, version, scalaVersion, sbtVersion)
+
+buildInfoPackage := "com.databricks.spark.sql.perf"
+
+val mainClazz = "com.databricks.spark.sql.perf.RunBenchmark"
+
+mainClass in assembly := Some(mainClazz)
+
 val runBenchmark = inputKey[Unit]("runs a benchmark")
 
 runBenchmark := {
@@ -64,7 +74,7 @@ runBenchmark := {
   val args = spaceDelimited("[args]").parsed
   val scalaRun = (runner in run).value
   val classpath = (fullClasspath in Compile).value
-  scalaRun.run("com.databricks.spark.sql.perf.RunBenchmark", classpath.map(_.data), args,
+  scalaRun.run(mainClazz, classpath.map(_.data), args,
     streams.value.log)
 }
 

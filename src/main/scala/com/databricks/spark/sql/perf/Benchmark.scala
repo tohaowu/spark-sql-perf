@@ -27,7 +27,6 @@ import scala.util.control.NonFatal
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{Dataset, DataFrame, SQLContext, SparkSession}
 import org.apache.spark.sql.catalyst.analysis.UnresolvedRelation
-import org.apache.spark.SparkContext
 
 import com.databricks.spark.sql.perf.cpu._
 
@@ -60,6 +59,8 @@ abstract class Benchmark(
         .map(m => m.getName -> m.invoke(cls).asInstanceOf[String])
         .toMap
   }.getOrElse(Map.empty)
+
+  def setup(): Unit = {}
 
   def currentConfiguration = BenchmarkConfiguration(
     sqlConf = sqlContext.getAllConfs,
@@ -124,52 +125,53 @@ abstract class Benchmark(
   val myType = runtimeMirror.classSymbol(getClass).toType
 
   def singleTables =
-    myType.declarations
-      .filter(m => m.isMethod)
+    myType.members
+      .filter(m => m.isMethod && m.owner.name.toTermName.toString != "Benchmark")
       .map(_.asMethod)
-      .filter(_.asMethod.returnType =:= typeOf[Table])
+      .filter(_.asMethod.returnType <:< typeOf[Table])
       .map(method => runtimeMirror.reflect(this).reflectMethod(method).apply().asInstanceOf[Table])
 
   def groupedTables =
-    myType.declarations
-      .filter(m => m.isMethod)
+    myType.members
+      .filter(m => m.isMethod && m.owner.name.toTermName.toString != "Benchmark")
       .map(_.asMethod)
-      .filter(_.asMethod.returnType =:= typeOf[Seq[Table]])
+      .filter(_.asMethod.returnType <:< typeOf[Seq[Table]])
       .flatMap(method => runtimeMirror.reflect(this).reflectMethod(method).apply().asInstanceOf[Seq[Table]])
 
   @transient
   lazy val allTables: Seq[Table] = (singleTables ++ groupedTables).toSeq
 
   def singleQueries =
-    myType.declarations
-      .filter(m => m.isMethod)
+    myType.members
+      .filter(m => m.isMethod && m.owner.name.toTermName.toString != "Benchmark")
       .map(_.asMethod)
-      .filter(_.asMethod.returnType =:= typeOf[Benchmarkable])
+      .filter(_.asMethod.returnType <:< typeOf[Benchmarkable])
       .map(method => runtimeMirror.reflect(this).reflectMethod(method).apply().asInstanceOf[Benchmarkable])
 
-  def groupedQueries =
-    myType.declarations
-      .filter(m => m.isMethod)
+  def groupedQueries = {
+    myType.members
+      .filter(m => m.isMethod && m.owner.name.toTermName.toString != "Benchmark")
       .map(_.asMethod)
-      .filter(_.asMethod.returnType =:= typeOf[Seq[Benchmarkable]])
+      .filter(_.asMethod.returnType <:< typeOf[Seq[Benchmarkable]])
       .flatMap(method => runtimeMirror.reflect(this).reflectMethod(method).apply().asInstanceOf[Seq[Benchmarkable]])
+  }
 
   @transient
   lazy val allQueries = (singleQueries ++ groupedQueries).toSeq
 
   def html: String = {
     val singleQueries =
-      myType.declarations
-        .filter(m => m.isMethod)
+      myType.members
+        .filter(m => m.isMethod && m.owner.name.toTermName.toString != "Benchmark")
         .map(_.asMethod)
-        .filter(_.asMethod.returnType =:= typeOf[Query])
+        .filter(_.asMethod.returnType <:< typeOf[Query])
         .map(method => runtimeMirror.reflect(this).reflectMethod(method).apply().asInstanceOf[Query])
         .mkString(",")
     val queries =
-      myType.declarations
+      myType.members
       .filter(m => m.isMethod)
       .map(_.asMethod)
-      .filter(_.asMethod.returnType =:= typeOf[Seq[Query]])
+        .filter(_.asMethod.returnType <:< typeOf[Seq[Query]])
       .map { method =>
         val queries = runtimeMirror.reflect(this).reflectMethod(method).apply().asInstanceOf[Seq[Query]]
         val queryList = queries.map(_.name).mkString(", ")
@@ -235,7 +237,9 @@ abstract class Benchmark(
 
     protected override val executionMode: ExecutionMode = ExecutionMode.SparkPerfResults
 
-    protected override def beforeBenchmark(): Unit = { prepare() }
+    protected override def beforeBenchmark(): Unit = {
+      prepare()
+    }
 
     protected override def doBenchmark(
         includeBreakdown: Boolean,
@@ -258,6 +262,7 @@ abstract class Benchmark(
       }
     }
   }
+
 }
 
 /**
@@ -534,4 +539,5 @@ object Benchmark {
          """.stripMargin
     }
   }
+
 }

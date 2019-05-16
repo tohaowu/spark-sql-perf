@@ -16,18 +16,23 @@
 
 package com.databricks.spark.sql.perf
 
-import java.net.InetAddress
 import java.io.File
-import org.apache.spark.sql.{SQLContext, SparkSession}
+import java.net.InetAddress
+
+import org.apache.spark.SparkConf
+import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions._
-import org.apache.spark.{SparkContext, SparkConf}
+
 import scala.util.Try
 
 case class RunConfig(
-    master: String = "local[*]",
     benchmarkName: String = null,
+    outputDir: String = new File("performance").toURI.toString,
+    format: Option[String] = None,
+    dataset: Option[String] = None,
+    path: Option[String] = None,
     filter: Option[String] = None,
-    iterations: Int = 3,
+    iterations: Int = 1,
     baseline: Option[Long] = None)
 
 /**
@@ -36,20 +41,29 @@ case class RunConfig(
 object RunBenchmark {
   def main(args: Array[String]): Unit = {
     val parser = new scopt.OptionParser[RunConfig]("spark-sql-perf") {
-      head("spark-sql-perf", "0.2.0")
-      opt[String]('m', "master")
-        .action { (x, c) => c.copy(master = x) }
-        .text("the Spark master to use, default to local[*]")
+      head("spark-sql-perf", BuildInfo.version)
       opt[String]('b', "benchmark")
         .action { (x, c) => c.copy(benchmarkName = x) }
         .text("the name of the benchmark to run")
         .required()
+      opt[String]("format")
+        .action((x, c) => c.copy(format = Some(x)))
+        .text("Format to use to read data (table is a hive table and not a data source)")
+      opt[String]('d', "dataset")
+        .action((x, c) => c.copy(dataset = Some(x)))
+        .text("dataset to find data in")
+      opt[String]('p', "path")
+        .action((x, c) => c.copy(path = Some(x)))
+        .text("HCFS directory holding data")
       opt[String]('f', "filter")
         .action((x, c) => c.copy(filter = Some(x)))
         .text("a filter on the name of the queries to run")
       opt[Int]('i', "iterations")
         .action((x, c) => c.copy(iterations = x))
         .text("the number of iterations to run")
+      opt[String]('o', "output")
+        .action((x, c) => c.copy(outputDir = x))
+        .text("HCFS directory containing the output report")
       opt[Long]('c', "compare")
           .action((x, c) => c.copy(baseline = Some(x)))
           .text("the timestamp of the baseline experiment to compare with")
@@ -67,7 +81,6 @@ object RunBenchmark {
 
   def run(config: RunConfig): Unit = {
     val conf = new SparkConf()
-      .setMaster(config.master)
       .setAppName(getClass.getName)
 
     val sparkSession = SparkSession.builder.config(conf).getOrCreate()
@@ -75,9 +88,17 @@ object RunBenchmark {
     val sqlContext = sparkSession.sqlContext
     import sqlContext.implicits._
 
-    sqlContext.setConf("spark.sql.perf.results",
-      new File("performance").toURI.toString)
+    sqlContext.setConf("spark.sql.perf.results", config.outputDir)
 
+    Map(
+      BenchmarkConfiguration.DATASET_KEY -> config.dataset,
+      BenchmarkConfiguration.FORMAT_KEY -> config.format,
+      BenchmarkConfiguration.PATH_KEY -> config.path)
+      .foreach {
+        case (k, Some(v)) =>
+          sqlContext.setConf(k, v)
+          case (_, None) => // nothing to set
+      }
     val benchmark = Try {
       Class.forName(config.benchmarkName)
           .newInstance()
@@ -87,6 +108,9 @@ object RunBenchmark {
           .newInstance()
           .asInstanceOf[Benchmark]
     }
+
+    println("== SETUP ==")
+    benchmark.setup()
 
     val allQueries = config.filter.map { f =>
       benchmark.allQueries.filter(_.name contains f)
